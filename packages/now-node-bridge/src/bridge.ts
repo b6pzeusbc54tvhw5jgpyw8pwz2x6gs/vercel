@@ -26,6 +26,7 @@ export interface NowProxyResponse {
   headers: OutgoingHttpHeaders;
   body: string;
   encoding: BufferEncoding;
+  isBase64Encoded: boolean;
 }
 
 interface ServerLike {
@@ -211,6 +212,7 @@ export class Bridge {
             statusCode: response.statusCode || 200,
             headers: response.headers,
             body: bodyBuffer.toString('base64'),
+            isBase64Encoded: true,
             encoding: 'base64',
           });
         });
