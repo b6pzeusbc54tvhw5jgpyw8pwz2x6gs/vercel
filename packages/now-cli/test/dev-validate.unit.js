@@ -12,7 +12,6 @@ test('[dev-validate] should not error with complete config', async t => {
     version: 2,
     public: true,
     regions: ['sfo1', 'iad1'],
-    builds: [{ src: 'package.json', use: '@vercel/next' }],
     cleanUrls: true,
     headers: [{ source: '/', headers: [{ key: 'x-id', value: '123' }] }],
     rewrites: [{ source: '/help', destination: '/support' }],
@@ -259,4 +258,26 @@ test('[dev-validate] should error with too many nested headers', async t => {
     error.link,
     'https://vercel.com/docs/configuration#project/headers'
   );
+});
+
+test('[dev-validate] should error with "functions" and "builds"', async t => {
+  const config = {
+    builds: [
+      {
+        src: 'index.html',
+        use: '@vercel/static',
+      },
+    ],
+    functions: {
+      'api/test.js': {
+        memory: 1024,
+      },
+    },
+  };
+  const error = validateConfig(config);
+  t.deepEqual(
+    error.message,
+    'The `functions` property cannot be used in conjunction with the `builds` property. Please remove one of them.'
+  );
+  t.deepEqual(error.link, 'https://vercel.link/functions-and-builds');
 });
