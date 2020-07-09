@@ -7,6 +7,7 @@ import {
   OutgoingHttpHeaders,
   request,
 } from 'http';
+import { URLSearchParams } from 'url';
 
 interface NowProxyEvent {
   Action: string;
@@ -75,7 +76,19 @@ function normalizeAPIGatewayProxyEvent(
   event: APIGatewayProxyEvent
 ): NowProxyRequest {
   let bodyBuffer: Buffer | null;
-  const { httpMethod: method, path, headers, body } = event;
+  const {
+    httpMethod: method,
+    path,
+    headers,
+    body,
+    multiValueQueryStringParameters,
+  } = event;
+  // API Gateway 1.0 format cuts the query string from the path
+  // https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-lambda.html
+  const params = new URLSearchParams(
+    multiValueQueryStringParameters || {}
+  ).toString();
+  const parameterizedPath = params ? `${path}?${params}` : path;
 
   if (body) {
     if (event.isBase64Encoded) {
@@ -87,7 +100,13 @@ function normalizeAPIGatewayProxyEvent(
     bodyBuffer = Buffer.alloc(0);
   }
 
-  return { isApiGateway: true, method, path, headers, body: bodyBuffer };
+  return {
+    isApiGateway: true,
+    method,
+    path: parameterizedPath,
+    headers,
+    body: bodyBuffer,
+  };
 }
 
 function normalizeEvent(

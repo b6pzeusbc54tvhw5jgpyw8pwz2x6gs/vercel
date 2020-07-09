@@ -34,6 +34,7 @@ test('`APIGatewayProxyEvent` normalizing', async () => {
       headers: { foo: 'bar' },
       path: '/apigateway',
       body: null,
+      multiValueQueryStringParameters: { query: ['string1', 'string2'] },
     },
     context
   );
@@ -41,7 +42,7 @@ test('`APIGatewayProxyEvent` normalizing', async () => {
   assert.equal(result.statusCode, 200);
   const body = JSON.parse(Buffer.from(result.body, 'base64').toString());
   assert.equal(body.method, 'GET');
-  assert.equal(body.path, '/apigateway');
+  assert.equal(body.path, '/apigateway?query=string1%2Cstring2');
   assert.equal(body.headers.foo, 'bar');
   assert.equal(context.callbackWaitsForEmptyEventLoop, false);
 
