@@ -82,13 +82,20 @@ function normalizeAPIGatewayProxyEvent(
     headers,
     body,
     multiValueQueryStringParameters,
+    resource,
   } = event;
+  // Trims the resource from the path
+  const normalizedResource = resource.endsWith('/{proxy+}')
+    ? resource.substring(0, resource.length - 9)
+    : resource;
+  const trimmedPath = path.slice(normalizedResource.length) || '/';
+
   // API Gateway 1.0 format cuts the query string from the path
   // https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-lambda.html
   const params = new URLSearchParams(
     multiValueQueryStringParameters || {}
   ).toString();
-  const parameterizedPath = params ? `${path}?${params}` : path;
+  const parameterizedPath = params ? `${trimmedPath}?${params}` : trimmedPath;
 
   if (body) {
     if (event.isBase64Encoded) {
