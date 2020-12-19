@@ -19,7 +19,7 @@ import {
 // @ts-ignore - `@types/mkdirp-promise` is broken
 import mkdirp from 'mkdirp-promise';
 import once from '@tootallnate/once';
-import { nodeFileTrace } from '@zeit/node-file-trace';
+import { nodeFileTrace } from '@vercel/nft';
 import buildUtils from './build-utils';
 import {
   File,
@@ -51,12 +51,6 @@ import { Register, register } from './typescript';
 
 export { shouldServe };
 export { NowRequest, NowResponse } from './types';
-
-interface CompilerConfig {
-  debug?: boolean;
-  includeFiles?: string | string[];
-  excludeFiles?: string | string[];
-}
 
 interface DownloadOptions {
   files: Files;
@@ -110,12 +104,7 @@ async function downloadInstallAndBundle({
   } else {
     const installTime = Date.now();
     console.log('Installing dependencies...');
-    await runNpmInstall(
-      entrypointFsDirname,
-      ['--prefer-offline'],
-      spawnOpts,
-      meta
-    );
+    await runNpmInstall(entrypointFsDirname, [], spawnOpts, meta);
     debug(`Install complete [${Date.now() - installTime}ms]`);
   }
 
@@ -125,9 +114,10 @@ async function downloadInstallAndBundle({
 
 async function compile(
   workPath: string,
+  baseDir: string,
   entrypointPath: string,
   entrypoint: string,
-  config: CompilerConfig
+  config: Config
 ): Promise<{
   preparedFiles: Files;
   shouldAddSourcemapSupport: boolean;
@@ -150,20 +140,21 @@ async function compile(
     for (const pattern of includeFiles) {
       const files = await glob(pattern, workPath);
       await Promise.all(
-        Object.keys(files).map(async file => {
-          const entry = files[file];
-          fsCache.set(file, entry);
+        Object.values(files).map(async entry => {
+          const { fsPath } = entry;
+          const relPath = relative(baseDir, fsPath);
+          fsCache.set(relPath, entry);
           const stream = entry.toStream();
           const { data } = await FileBlob.fromStream({ stream });
-          if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+          if (relPath.endsWith('.ts') || relPath.endsWith('.tsx')) {
             sourceCache.set(
-              file,
-              compileTypeScript(resolve(workPath, file), data.toString())
+              relPath,
+              compileTypeScript(fsPath, data.toString())
             );
           } else {
-            sourceCache.set(file, data);
+            sourceCache.set(relPath, data);
           }
-          inputFiles.add(resolve(workPath, file));
+          inputFiles.add(fsPath);
         })
       );
     }
@@ -178,7 +169,7 @@ async function compile(
 
   let tsCompile: Register;
   function compileTypeScript(path: string, source: string): string {
-    const relPath = relative(workPath, path);
+    const relPath = relative(baseDir, path);
     if (!tsCompile) {
       tsCompile = register({
         basePath: workPath, // The base is the same as root now.json dir
@@ -201,12 +192,13 @@ async function compile(
   const { fileList, esmFileList, warnings } = await nodeFileTrace(
     [...inputFiles],
     {
-      base: workPath,
+      base: baseDir,
+      processCwd: workPath,
       ts: true,
       mixedModules: true,
       ignore: config.excludeFiles,
       readFile(fsPath: string): Buffer | string | null {
-        const relPath = relative(workPath, fsPath);
+        const relPath = relative(baseDir, fsPath);
         const cached = sourceCache.get(relPath);
         if (cached) return cached.toString();
         // null represents a not found
@@ -246,7 +238,7 @@ async function compile(
   for (const path of fileList) {
     let entry = fsCache.get(path);
     if (!entry) {
-      const fsPath = resolve(workPath, path);
+      const fsPath = resolve(baseDir, path);
       const { mode } = lstatSync(fsPath);
       if (isSymbolicLink(mode)) {
         entry = new FileFsRef({ fsPath, mode });
@@ -258,14 +250,14 @@ async function compile(
     if (isSymbolicLink(entry.mode) && entry.fsPath) {
       // ensure the symlink target is added to the file list
       const symlinkTarget = relative(
-        workPath,
+        baseDir,
         resolve(dirname(entry.fsPath), readlinkSync(entry.fsPath))
       );
       if (
         !symlinkTarget.startsWith('..' + sep) &&
         fileList.indexOf(symlinkTarget) === -1
       ) {
-        const stats = statSync(resolve(workPath, symlinkTarget));
+        const stats = statSync(resolve(baseDir, symlinkTarget));
         if (stats.isFile()) {
           fileList.push(symlinkTarget);
         }
@@ -275,7 +267,7 @@ async function compile(
     // There is a bug on Windows where entrypoint uses forward slashes
     // and workPath uses backslashes so we use resolve before comparing.
     if (
-      resolve(workPath, path) !== resolve(workPath, entrypoint) &&
+      resolve(baseDir, path) !== resolve(workPath, entrypoint) &&
       tsCompiled.has(path)
     ) {
       preparedFiles[
@@ -339,6 +331,7 @@ export async function build({
   files,
   entrypoint,
   workPath,
+  repoRootPath,
   config = {},
   meta = {},
 }: BuildOptions) {
@@ -346,6 +339,7 @@ export async function build({
     config.helpers === false || process.env.NODEJS_HELPERS === '0'
   );
 
+  const baseDir = repoRootPath || workPath;
   const awsLambdaHandler = getAWSLambdaHandler(entrypoint, config);
 
   const {
@@ -372,6 +366,7 @@ export async function build({
   const traceTime = Date.now();
   const { preparedFiles, shouldAddSourcemapSupport, watch } = await compile(
     workPath,
+    baseDir,
     entrypointPath,
     entrypoint,
     config
@@ -383,7 +378,7 @@ export async function build({
   const launcherFiles: Files = {
     [`${LAUNCHER_FILENAME}.js`]: new FileBlob({
       data: makeLauncher({
-        entrypointPath: `./${entrypoint}`,
+        entrypointPath: `./${relative(baseDir, entrypointPath)}`,
         bridgePath: `./${BRIDGE_FILENAME}`,
         helpersPath: `./${HELPERS_FILENAME}`,
         sourcemapSupportPath: `./${SOURCEMAP_SUPPORT_FILENAME}`,

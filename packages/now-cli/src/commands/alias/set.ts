@@ -96,7 +96,7 @@ export default async function set(
     return 1;
   }
 
-  // For `now alias set <argument>`
+  // For `vercel alias set <argument>`
   if (args.length === 1) {
     const deployment = handleCertError(
       output,
@@ -261,7 +261,7 @@ function handleSetupDomainError<T>(
         { extraSpace: '     ' }
       )}\n\n`
     );
-    output.print('  Read more: https://err.sh/now/domain-verification\n');
+    output.print('  Read more: https://err.sh/vercel/domain-verification\n');
     return 1;
   }
 
@@ -388,7 +388,7 @@ function handleCreateAliasError<T>(
   }
   if (error instanceof ERRORS.InvalidAlias) {
     output.error(
-      `Invalid alias. Please confirm that the alias you provided is a valid hostname. Note: For \`now.sh\`, only sub and sub-sub domains are supported.`
+      `Invalid alias. Please confirm that the alias you provided is a valid hostname. Note: For \`vercel.app\`, only sub and sub-sub domains are supported.`
     );
     return 1;
   }
